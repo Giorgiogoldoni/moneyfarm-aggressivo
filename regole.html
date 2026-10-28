@@ -1,0 +1,73 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Regole — Money Farm Aggressivo</title>
+<style>
+  :root { --ink:#14181f; --soft:#5b6472; --line:#e2e5ea; --accent:#1f4b3f; --warn:#8a5a12; --warn-soft:#fbf0dd; }
+  * { box-sizing: border-box; }
+  body { margin:0; background:#fff; color:var(--ink); font:14px/1.55 -apple-system,BlinkMacSystemFont,"Segoe UI",Inter,sans-serif; }
+  main { max-width: 820px; margin: 0 auto; padding: 28px 24px 60px; }
+  h1 { font-size: 22px; margin: 0 0 4px; }
+  h2 { font-size: 15px; margin: 26px 0 8px; color: var(--accent); border-bottom: 1px solid var(--line); padding-bottom: 4px; }
+  .sub { color: var(--soft); font-size: 13px; }
+  table { width:100%; border-collapse: collapse; margin: 8px 0; }
+  th, td { text-align:left; padding: 6px 8px; border-bottom: 1px solid var(--line); font-size: 13px; vertical-align: top; }
+  th { font-size: 11px; text-transform: uppercase; color: var(--soft); }
+  .box { background: var(--warn-soft); color: var(--warn); border-radius: 8px; padding: 10px 14px; font-size: 13px; margin: 10px 0; }
+  .bar { display:flex; gap:8px; margin: 14px 0 0; }
+  button { font: 600 12px inherit; font-family: inherit; padding: 7px 12px; border-radius: 6px; border: 1px solid #c7ccd4; background:#fff; cursor:pointer; }
+  a { color: var(--accent); }
+  @media print { .bar { display:none; } main { padding: 0; } }
+</style>
+</head>
+<body>
+<main>
+  <h1 id="t">Regole e metodo</h1>
+  <div class="sub" id="sub">—</div>
+  <div class="bar"><button onclick="window.print()">⬇ Salva come PDF (stampa)</button><button onclick="location.href='index.html'">← Portafoglio</button></div>
+
+  <h2>1. Cosa mostra il report</h2>
+  <p>Composizione dell'ultimo estratto del portafoglio: quantità, prezzo, prezzo di carico medio, controvalore e peso sul totale (cash incluso). I pesi sono calcolati dal controvalore, non sono pesi target.</p>
+
+  <h2>2. Gestione e performance</h2>
+  <p id="gest">—</p>
+  <div class="box">La performance per posizione è calcolata sul prezzo di carico medio delle posizioni <b>attuali</b>. Non è il rendimento del portafoglio dall'inizio della gestione: non include le posizioni già vendute, i flussi e le date di acquisto, che non sono disponibili. Non è annualizzata e non va usata come rendimento della gestione.</div>
+
+  <h2>3. Sovrapposizione USA</h2>
+  <p>Il report somma i prodotti con esposizione diretta agli Stati Uniti (S&amp;P 500 e Nasdaq 100). I fondi mondo (World Value, Min Vol) contengono altra esposizione USA che non viene quantificata: l'esposizione reale è quindi maggiore del valore indicato.</p>
+
+  <h2>4. Grafici e segnali (standard scannerv3)</h2>
+  <p>Dati giornalieri a 2 anni da Yahoo Finance, scaricati dal workflow GitHub Actions nei giorni feriali. Grafico Heikin-Ashi con KAMA e SAR, pannelli Baffetti, AO e RSI(14). I segnali sono <b>solo informativi</b>: non modificano i pesi del portafoglio e non sono una raccomandazione.</p>
+  <table>
+    <thead><tr><th>Segnale</th><th>Significato</th></tr></thead>
+    <tbody>
+      <tr><td>BUY1</td><td>Inversione SAR rialzista con momentum in miglioramento (AO) e incrocio KAMA recente.</td></tr>
+      <tr><td>BUY2</td><td>Prezzo sopra KAMA con pattern Baffetti ≥ 2.</td></tr>
+      <tr><td>BUY3</td><td>Prezzo sopra KAMA, Efficiency Ratio ≥ 0,50, Baffetti ≥ 3 e medie allineate.</td></tr>
+      <tr><td>EXIT1</td><td>Inversione SAR ribassista.</td></tr>
+      <tr><td>EXIT2</td><td>Prezzo sotto KAMA e SAR ribassista.</td></tr>
+      <tr><td>WATCH / MEAN REV</td><td>Segnali di attenzione: non aprono né chiudono la posizione simulata.</td></tr>
+    </tbody>
+  </table>
+  <p>La storia segnali simula un'entrata su BUY1/BUY2/BUY3 e un'uscita su EXIT1/EXIT2, senza costi né slippage. È una simulazione sul singolo ETF e non rappresenta le operazioni reali della gestione.</p>
+
+  <h2>5. Strumenti e note</h2>
+  <table id="tb"><thead><tr><th>ETF</th><th>Ticker</th><th>ISIN</th><th>Nota</th></tr></thead><tbody></tbody></table>
+
+  <h2>6. Fonti e limiti</h2>
+  <p>Composizione: file esportato da Money Farm. Prezzi dei grafici: Yahoo Finance, con possibili ritardi o lacune. Il prezzo della composizione e quello del grafico possono differire se riferiti a date o listini diversi.</p>
+</main>
+<script>
+const it = d => new Date(d + 'T12:00:00').toLocaleDateString('it-IT');
+fetch('config.json?v=' + Date.now()).then(r => r.json()).then(c => {
+  document.getElementById('t').textContent = 'Regole e metodo — ' + c.portafoglio;
+  document.getElementById('sub').textContent = 'Prezzi della composizione al ' + it(c.data_prezzi) + ' · Documento aggiornato il ' + new Date().toLocaleDateString('it-IT');
+  document.getElementById('gest').textContent = 'Gestione dinamica attiva dal ' + it(c.inizio_gestione) + '. Le posizioni cambiano nel tempo: il report mostra solo la fotografia più recente.';
+  document.querySelector('#tb tbody').innerHTML = c.posizioni.map(p =>
+    `<tr><td>${p.name}</td><td>${p.yahoo}</td><td>${p.isin}</td><td>${p.nota || '—'}</td></tr>`).join('');
+});
+</script>
+</body>
+</html>
