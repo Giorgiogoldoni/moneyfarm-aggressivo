@@ -1,0 +1,166 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Money Farm — Portafoglio aggressivo</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<style>
+  :root { --bg:#fff; --ink:#14181f; --soft:#5b6472; --line:#e2e5ea; --line2:#c7ccd4; --accent:#1f4b3f;
+          --buy:#1f7a4d; --buy-soft:#e6f5ec; --exit:#b23b3b; --exit-soft:#fbeaea; --warn:#8a5a12; --warn-soft:#fbf0dd;
+          --mono:"IBM Plex Mono",Consolas,monospace; }
+  * { box-sizing: border-box; }
+  body { margin:0; background:var(--bg); color:var(--ink); font:14px/1.45 -apple-system,BlinkMacSystemFont,"Segoe UI",Inter,sans-serif; }
+  header { padding:20px 32px 14px; border-bottom:1px solid var(--line); display:flex; justify-content:space-between; align-items:flex-start; gap:16px; flex-wrap:wrap; }
+  h1 { margin:0 0 4px; font-size:20px; }
+  .sub { color:var(--soft); font-size:13px; }
+  .actions { display:flex; gap:8px; }
+  button.action { font:600 12px inherit; font-family:inherit; padding:7px 12px; border-radius:6px; border:1px solid var(--line2); background:#fff; cursor:pointer; }
+  .cards { display:grid; grid-template-columns:repeat(5,1fr); gap:1px; background:var(--line); border-bottom:1px solid var(--line); }
+  .card { background:#fff; padding:12px 16px; }
+  .card .l { font-size:10px; text-transform:uppercase; letter-spacing:.04em; color:var(--soft); margin-bottom:3px; }
+  .card .v { font-family:var(--mono); font-size:17px; font-weight:700; }
+  .pos { color:var(--buy); } .neg { color:var(--exit); }
+  .box { margin:14px 32px 0; background:var(--warn-soft); color:var(--warn); border-radius:8px; padding:10px 14px; font-size:13px; }
+  section { padding:18px 32px 0; }
+  h2 { font-size:15px; margin:0 0 8px; }
+  .wrap { overflow-x:auto; }
+  table { width:100%; border-collapse:collapse; }
+  th { text-align:left; font-size:11px; text-transform:uppercase; color:var(--soft); padding:8px 10px; border-bottom:1px solid var(--line2); white-space:nowrap; }
+  td { padding:8px 10px; border-bottom:1px solid var(--line); font-size:12.5px; vertical-align:middle; }
+  td.n, th.n { text-align:right; font-family:var(--mono); white-space:nowrap; }
+  td small { display:block; color:var(--soft); font-size:11px; }
+  .bar { display:inline-block; height:8px; background:var(--accent); border-radius:2px; vertical-align:middle; margin-right:6px; }
+  .badge { display:inline-block; padding:2px 9px; border-radius:20px; font-size:11.5px; font-weight:700; font-family:var(--mono); background:#f0f2f5; color:var(--soft); }
+  .badge.buy1,.badge.buy2,.badge.buy3 { background:var(--buy-soft); color:var(--buy); }
+  .badge.exit1,.badge.exit2 { background:var(--exit-soft); color:var(--exit); }
+  .badge.watch,.badge.meanrev { background:var(--warn-soft); color:var(--warn); }
+  a { color:var(--accent); font-weight:600; text-decoration:none; }
+  .alloc { display:grid; grid-template-columns:repeat(auto-fit,minmax(220px,1fr)); gap:10px; }
+  .alloc div { border:1px solid var(--line); border-radius:8px; padding:10px 12px; }
+  .alloc b { font-family:var(--mono); }
+  footer { padding:22px 32px 40px; color:var(--soft); font-size:12px; }
+  @media (max-width:900px){ .cards{grid-template-columns:repeat(2,1fr);} header,section,.box{margin-left:0;margin-right:0;padding-left:16px;padding-right:16px;} }
+</style>
+</head>
+<body>
+<header>
+  <div>
+    <h1 id="titolo">Money Farm — Portafoglio aggressivo</h1>
+    <div class="sub" id="sub">Caricamento…</div>
+  </div>
+  <div class="actions">
+    <button class="action" id="xls">⬇ Excel</button>
+    <button class="action" onclick="window.open('regole.html','_blank')">📄 Regole (PDF)</button>
+  </div>
+</header>
+
+<div class="cards" id="cards"></div>
+<div class="box" id="avviso"></div>
+
+<section>
+  <h2>Composizione</h2>
+  <div class="wrap"><table>
+    <thead><tr>
+      <th>Strumento</th><th>Ticker</th><th class="n">Qtà</th><th class="n">Prezzo</th><th class="n">Carico</th>
+      <th class="n">Perf. su carico</th><th class="n">Controvalore</th><th>Peso</th><th>Segnale</th><th>Grafico</th>
+    </tr></thead>
+    <tbody id="body"></tbody>
+  </table></div>
+</section>
+
+<section>
+  <h2>Esposizione</h2>
+  <div class="alloc" id="alloc"></div>
+</section>
+
+<footer id="foot"></footer>
+
+<script>
+const eur = v => v.toLocaleString('it-IT', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + ' €';
+const pct = (v, d = 1) => v.toLocaleString('it-IT', { minimumFractionDigits: d, maximumFractionDigits: d }) + '%';
+const sgn = v => (v > 0 ? '+' : '') + pct(v, 2);
+const cls = v => v > 0 ? 'pos' : (v < 0 ? 'neg' : '');
+const it = d => new Date(d + 'T12:00:00').toLocaleDateString('it-IT');
+const bc = s => s ? s.toLowerCase().replace(/\s+/g, '') : '';
+let CFG, ROWS = [], IDX = {};
+
+Promise.all([
+  fetch('config.json?v=' + Date.now()).then(r => r.json()),
+  fetch('data/charts/index.json?v=' + Date.now()).then(r => r.ok ? r.json() : null).catch(() => null)
+]).then(([c, ix]) => {
+  CFG = c;
+  if (ix && ix.ticker) ix.ticker.forEach(t => IDX[t.yahoo] = t);
+  const etf = c.posizioni.reduce((a, p) => a + p.controvalore, 0);
+  const tot = etf + c.cash;
+  ROWS = c.posizioni.map(p => {
+    const costo = p.qta * p.carico;
+    return { ...p, costo, pnl: p.controvalore - costo, perf: (p.prezzo / p.carico - 1) * 100, peso: p.controvalore / tot * 100 };
+  }).sort((a, b) => b.controvalore - a.controvalore);
+  const costoTot = ROWS.reduce((a, r) => a + r.costo, 0);
+  const pnlTot = etf - costoTot;
+  const usa = ROWS.filter(r => r.usa_diretto).reduce((a, r) => a + r.controvalore, 0) / tot * 100;
+
+  document.getElementById('titolo').textContent = c.portafoglio;
+  document.getElementById('sub').textContent =
+    'Gestione dinamica attiva dal ' + it(c.inizio_gestione) + ' · Prezzi della composizione al ' + it(c.data_prezzi) +
+    (ix && ix.generato ? ' · Segnali aggiornati il ' + ix.generato.replace(' ', ' alle ') + ' (UTC)' : '');
+
+  const cards = [
+    ['Totale', eur(tot)], ['Strumenti (10 ETF)', eur(etf)], ['Cash', eur(c.cash) + ' (' + pct(c.cash / tot * 100) + ')'],
+    ['P&L posizioni attuali', `<span class="${cls(pnlTot)}">${pnlTot > 0 ? '+' : ''}${eur(pnlTot)}</span>`],
+    ['Perf. su carico (non annualizzata)', `<span class="${cls(pnlTot)}">${sgn(pnlTot / costoTot * 100)}</span>`]
+  ];
+  document.getElementById('cards').innerHTML = cards.map(x => `<div class="card"><div class="l">${x[0]}</div><div class="v">${x[1]}</div></div>`).join('');
+
+  document.getElementById('avviso').innerHTML =
+    '<b>Attenzione:</b> la performance è calcolata sul prezzo di carico medio delle posizioni attuali. Non è il rendimento della gestione dal ' +
+    it(c.inizio_gestione) + ': non include le posizioni già vendute né i flussi (date di acquisto non disponibili).';
+
+  document.getElementById('body').innerHTML = ROWS.map(r => {
+    const s = IDX[r.yahoo] ? IDX[r.yahoo].segnale : null;
+    return `<tr>
+      <td>${r.name}<small>${r.isin}${r.nota ? ' · ⚠ ' + r.nota : ''}</small></td>
+      <td>${r.yahoo}</td>
+      <td class="n">${r.qta}</td><td class="n">${eur(r.prezzo)}</td><td class="n">${eur(r.carico)}</td>
+      <td class="n ${cls(r.perf)}">${sgn(r.perf)}</td><td class="n">${eur(r.controvalore)}</td>
+      <td><span class="bar" style="width:${Math.round(r.peso * 3)}px"></span>${pct(r.peso)}</td>
+      <td>${s ? `<span class="badge ${bc(s)}">${s}</span>` : '<span class="badge">—</span>'}</td>
+      <td><a href="dettaglio.html?y=${encodeURIComponent(r.yahoo)}">Apri →</a></td>
+    </tr>`;
+  }).join('') + `<tr><td>Cash</td><td>—</td><td class="n">—</td><td class="n">—</td><td class="n">—</td><td class="n">—</td>
+      <td class="n">${eur(c.cash)}</td><td>${pct(c.cash / tot * 100)}</td><td></td><td></td></tr>`;
+
+  const byArea = {};
+  ROWS.forEach(r => byArea[r.area] = (byArea[r.area] || 0) + r.controvalore);
+  const areas = Object.entries(byArea).sort((a, b) => b[1] - a[1])
+    .map(([k, v]) => `<div>${k}<br><b>${pct(v / tot * 100)}</b></div>`).join('');
+  document.getElementById('alloc').innerHTML =
+    `<div style="border-color:#b23b3b">USA diretta (S&amp;P 500 + Nasdaq 100)<br><b>${pct(usa)}</b><br><small style="color:#5b6472">I fondi mondo contengono altra esposizione USA non conteggiata qui.</small></div>` + areas +
+    `<div>Cash<br><b>${pct(c.cash / tot * 100)}</b></div>`;
+
+  document.getElementById('foot').textContent =
+    'Pesi calcolati sul controvalore (cash incluso), non sono pesi target. I segnali sono solo informativi e non modificano il portafoglio. Fonte composizione: esportazione Money Farm; fonte grafici: Yahoo Finance.';
+}).catch(e => { document.getElementById('sub').textContent = 'Errore nel caricamento: ' + e.message; });
+
+document.getElementById('xls').addEventListener('click', () => {
+  if (!CFG) return;
+  const tot = ROWS.reduce((a, r) => a + r.controvalore, 0) + CFG.cash;
+  const rows = ROWS.map(r => ({
+    Strumento: r.name, ISIN: r.isin, Ticker: r.yahoo, Area: r.area, 'Quantità': r.qta, Prezzo: r.prezzo, 'Prezzo di carico': r.carico,
+    'Perf. su carico %': +r.perf.toFixed(2), Controvalore: r.controvalore, 'Peso %': +r.peso.toFixed(2),
+    Segnale: IDX[r.yahoo] ? IDX[r.yahoo].segnale : '', Nota: r.nota }));
+  rows.push({ Strumento: 'Cash', Controvalore: CFG.cash, 'Peso %': +(CFG.cash / tot * 100).toFixed(2) });
+  const info = [
+    { Voce: 'Portafoglio', Valore: CFG.portafoglio },
+    { Voce: 'Inizio gestione', Valore: it(CFG.inizio_gestione) },
+    { Voce: 'Prezzi al', Valore: it(CFG.data_prezzi) },
+    { Voce: 'Avvertenza', Valore: 'Perf. calcolata sul carico medio delle posizioni attuali: non è il rendimento della gestione dall\'inizio.' }];
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(rows), 'Composizione');
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(info), 'Info');
+  XLSX.writeFile(wb, 'moneyfarm_aggressivo_' + CFG.data_prezzi + '.xlsx');
+});
+</script>
+</body>
+</html>
